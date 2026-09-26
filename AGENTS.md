@@ -1,14 +1,18 @@
+# AGENTS.md
+
+This file provides guidance to agents when working with code in this repository.
+
 # Galaxium Travels
 
 A demo interplanetary flight-booking app that mimics a real enterprise system. Its purpose is to **showcase challenges agents face in a multi-service codebase** — not to run in production.
 
-When you are asked to create a plan while in agent mode, do other things you need to do, like gathering data from a CLI and then explicitly switch to plan mode. 
+When you are asked to create a plan while in agent mode, do other things you need to do, like gathering data from a CLI and then explicitly switch to plan mode.
 
-When creating planning documents, put them on the root level in all caps. 
+When creating planning documents, put them on the root level in all caps.
 
-Before you start building anything look for information about tests and verification
+Before you start building anything look for information about tests and verification.
 
-For any exploration task, use subagents. E.g. when you are asked to create an onboarding document
+For any exploration task, use subagents. E.g. when you are asked to create an onboarding document.
  
 ## Footguns
 
@@ -61,23 +65,31 @@ If `docker ps` errors with "cannot connect to the Docker daemon", `colima start`
 
 - **Install:** `cd booking_system_backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
 - **Run:** `.venv/bin/python server.py` (listens on `:8001`)
+- **All tests:** `cd booking_system_backend && .venv/bin/python -m pytest -v --tb=short`
+- **Single test:** `cd booking_system_backend && .venv/bin/python -m pytest tests/test_rest.py::TestBookEndpoint::test_book_flight_success -v`
+- **Lint:** `cd booking_system_backend && .venv/bin/ruff check .` (B008 is ignored — `Depends()` in signatures is intentional)
+- **Type-check:** `cd booking_system_backend && .venv/bin/mypy . --ignore-missing-imports` (baseline pre-existing errors in `.bob/hooks/mypy-baseline.txt` — only new errors matter)
 
 ### Java Hold Service (Spring Boot / Maven)
 
 - **Build & run:** `cd booking_system_inventory_hold_service && mvn spring-boot:run` (requires Java 17 or 21 + Maven)
+- **Unit tests:** `cd booking_system_inventory_hold_service && mvn test -q`
 - **Config:** `PYTHON_BACKEND_URL` env var overrides the Python backend address (default `http://localhost:8001`)
 
 ### Frontend (React / Vite)
 
 - **Install:** `cd booking_system_frontend && npm install`
 - **Dev:** `cd booking_system_frontend && npm run dev` (listens on `:5173`)
-- **Build:** `cd booking_system_frontend && npm run build`
+- **Build:** `cd booking_system_frontend && npm run build` (runs `tsc -b` first)
+- **Lint:** `cd booking_system_frontend && npm run lint` (ESLint only — **no frontend unit tests exist**)
 
 ### Full stack
 
 - **Start all locally:** `./start.sh` (wraps `scripts/local/start_locally.sh`)
 - **Docker Compose (backend + frontend):** `docker compose up`
 - **Docker Compose (+ Java hold service):** `docker compose --profile hold-service up`
+- **e2e (native, no Docker):** `./e2e/run-native.sh` — manages its own service lifecycle; add `E2E_RUN_SLOW=1` for the ~90 s auto-expiry test
+- **e2e (keep stack up for debugging):** `E2E_KEEP_STACK=1 ./e2e/run-native.sh`
 
 ### Deploy
 
@@ -130,11 +142,15 @@ scripts/
 
 ## Conventions
 
-- **Backend:** snake_case for functions/variables; PascalCase for classes/Pydantic models.
-- **Frontend API errors:** always inspect the `success` field or look for `error` in the body — HTTP status is not reliable for error detection (see [`api.ts`](booking_system_frontend/src/services/api.ts:112)).
-- **Custom Tailwind tokens:** space-themed palette defined in [`tailwind.config.js`](booking_system_frontend/tailwind.config.js) — do not assume standard Tailwind color names.
-- **Java:** Lombok `@Data`/`@Builder`/`@RequiredArgsConstructor` used throughout; no manual getters/setters. Service methods are `@Transactional`.
-- **New backend endpoints:** add REST handler + matching MCP tool if agent-accessible, following the pattern in `server.py`.
+- **Backend:** snake_case for functions/variables; PascalCase for classes/Pydantic models. All Pydantic schemas use `model_config = ConfigDict(from_attributes=True)` for ORM compat.
+- **Service return type:** service functions return `T | ErrorResponse` — never raise. REST endpoints call `isinstance(result, ErrorResponse)` and map error codes to HTTP status manually.
+- **Frontend API errors:** always inspect the `success` field or look for `error` in the body — HTTP 200 is returned even for Java proxy errors. The axios interceptor in [`api.ts`](booking_system_frontend/src/services/api.ts) normalises errors to `ErrorResponse` shape.
+- **Custom Tailwind tokens:** space-themed palette in [`tailwind.config.js`](booking_system_frontend/tailwind.config.js) — `space-dark`, `space-blue`, `cosmic-purple`, `nebula-pink`, `alien-green`, `solar-orange`, `star-white`. Do not use standard Tailwind color names not in this list.
+- **Java:** Lombok `@Data`/`@Builder`/`@RequiredArgsConstructor` throughout; no manual getters/setters. Service methods are `@Transactional`.
+- **New backend endpoints:** add REST handler + matching MCP tool if agent-accessible, following the pattern in [`server.py`](booking_system_backend/server.py).
+- **pytest must run from `booking_system_backend/`** — `conftest.py` uses `sys.path.insert` relative to its own location; running from repo root breaks imports.
+- **mypy baseline:** `.bob/hooks/mypy-check.sh` runs mypy after every Python file edit and injects new (non-baseline) errors into the next prompt. Regenerate baseline with `.bob/hooks/gen-mypy-baseline.sh` after intentional type surface changes.
+- **Commit gate:** `git commit` is blocked by a hook if the backend pytest suite is red. Check `.bob/hooks/state/.last-block` for the reason.
 
 ## Workflow
 
